@@ -316,6 +316,12 @@ async def handle_callbacks(client, callback_query):
     elif data == "auth":
         auth_text = """<pre>#Sos 〔AUTH GATES〕</pre>
 ━ ━ ━ ━ ━━━ ━ ━ ━ ━
+⟐ <b>Name</b>: <code>AutoStripe [Site Based]</code>
+⟐ <b>Command</b>: <code>/str cc|mm|yy|cvv</code>
+⟐ <b>Mass Cmd</b>: <code>/mstr cc|mm|yy|cvv</code>
+⟐ <b>Status</b>: <code>Active ✅</code>
+⟐ <b>Note</b>: <code>Requires /addurl first</code>
+═══════════════════
 ⟐ <b>Name</b>: <code>Stripe Auth</code>
 ⟐ <b>Command</b>: <code>/au cc|mm|yy|cvv</code>
 ⟐ <b>Mass Cmd</b>: <code>/mau cc|mm|yy|cvv</code>
@@ -513,7 +519,7 @@ async def handle_callbacks(client, callback_query):
 ⟐ <code>/delpx</code> - Delete Your Proxy
 ━ ━ ━ ━ ━━━ ━ ━ ━ ━
 <b>• Other:</b>
-⟐ <code>/f</code> - Submit Feedback (Reply to Image)
+⟐ <code>/f</code> or <code>/fb</code> - Submit Feedback (Reply/Caption)
 ⟐ <code>/info</code> - Your Account Info
 ⟐ <code>/redeem code</code> - Redeem Code
 """
