@@ -332,25 +332,24 @@ async def payflow_single(client, message):
         end_time = time()
         timetaken = round(end_time - start_time, 2)
         
-        profile = f"<a href='tg://user?id={user_id}'>{message.from_user.first_name}</a>"
-        
         user_data = users.get(user_id, {})
         plan = user_data.get("plan", {}).get("plan", "Free")
         badge = user_data.get("plan", {}).get("badge", "🎟️")
         
         final_msg = f"""<b>[#Payflow] | Sos</b> ✦
 ━━━━━━━━━━━━━━━
-<b>💳 Card:</b> <code>{fullcc}</code>
-<b>📊 Status:</b> <code>{status}</code>
-<b>💬 Response:</b> <code>{response}</code>
-<b>⏱️ Time:</b> <code>{timetaken}s</code>
-<b>🌐 Gateway:</b> <code>Payflow Auth</code>
+<b>[•] Card-</b> <code>{fullcc}</code>
+<b>[•] Gateway -</b> <code>Payflow Auth</code>
+<b>[•] Status-</b> <code>{status}</code>
+<b>[•] Response-</b> <code>{response}</code>
 ━━━━━━━━━━━━━━━
-<b>[ﾒ] Checked By</b>: {profile} [<code>{plan} {badge}</code>]"""
+<b>[ﾒ] Checked By:</b> {message.from_user.first_name} [<code>{plan} {badge}</code>]
+<b>[ﾒ] T/t:</b> <code>[{timetaken} 𝐬]</code>"""
         
         buttons = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("Support", url="https://t.me/gitsus"),
+                InlineKeyboardButton("Plans", callback_data="plans_info")
             ]
         ])
         
@@ -454,7 +453,7 @@ async def payflow_mass(client, message):
             except:
                 pass
         
-        checked_by = f"<a href='tg://user?id={user_id}'>{message.from_user.first_name}</a>"
+        checked_by = f"{message.from_user.first_name} [<code>{plan} {badge}</code>]"
         
         proxy = get_proxy(message.from_user.id)
         
@@ -477,9 +476,9 @@ async def payflow_mass(client, message):
                 status, response = await loop.run_in_executor(None, check_payflow, cc, mm, yy, cvv, proxy)
                 
                 final_results.append(
-                    f"• <b>Card:</b> <code>{card}</code>\n"
-                    f"• <b>Status:</b> <code>{status}</code>\n"
-                    f"• <b>Response:</b> <code>{response}</code>\n"
+                    f"[•] <b>Card:</b> <code>{card}</code>\n"
+                    f"[•] <b>Status:</b> <code>{status}</code>\n"
+                    f"[•] <b>Response:</b> <code>{response}</code>\n"
                     "━━━━━━━━━━━━"
                 )
                 
@@ -502,9 +501,9 @@ async def payflow_mass(client, message):
         
         final_text = f"<pre>✦ [$mpl] | M-Payflow</pre>\n"
         final_text += "\n".join(final_results) + "\n"
-        final_text += f"<b>[⚬] T/t:</b> <code>{timetaken}s</code>\n"
-        final_text += f"<b>[⚬] Total:</b> <code>{card_count} cards</code>\n"
-        final_text += f"<b>[⚬] Checked By:</b> {checked_by} [<code>{plan} {badge}</code>]"
+        final_text += f"<b>[ﾒ] T/t:</b> <code>[{timetaken} 𝐬]</code>\n"
+        final_text += f"<b>[ﾒ] Total:</b> <code>{card_count} cards</code>\n"
+        final_text += f"<b>[ﾒ] Checked By:</b> {checked_by}"
         
         if len(final_text) > 4000:
             import os

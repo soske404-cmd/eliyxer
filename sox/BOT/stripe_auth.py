@@ -99,7 +99,14 @@ class StripeGate:
             if 'id' in result:
                 return True, result['id']
             elif 'error' in result:
-                return False, result['error'].get('message', 'Token Error')
+                error_msg = result['error'].get('message', 'Token Error')
+                error_code = result['error'].get('code', '')
+                # Check for expired card at token level
+                if 'expired' in error_msg.lower() or 'expired' in error_code.lower():
+                    return False, "Expired Card"
+                elif 'invalid' in error_msg.lower():
+                    return False, error_msg[:40]
+                return False, error_msg[:40]
             return False, "Token Error"
         except Exception as e:
             return False, str(e)[:40]
@@ -135,21 +142,32 @@ class StripeGate:
             js = r2.json()
             
             if js.get('success') is True:
-                return "Approved ✅", "Card Approved"
+                return "Approved ✅", "Succeeded"
             else:
                 msg = js.get('data', {}).get('error', {}).get('message', 'Declined')
                 msg_upper = msg.upper()
                 
-                if any(kw in msg_upper for kw in ['INSUFFICIENT', 'FUNDS']):
-                    return "Approved ✅", "Insufficient Funds"
+                # Expired card
+                if 'EXPIRED' in msg_upper or 'EXPIRATION' in msg_upper:
+                    return "Declined ❌", "Expired Card"
+                # CVV errors = Approved
                 elif any(kw in msg_upper for kw in ['CVC', 'CVV', 'SECURITY CODE']):
-                    return "CCN ✅", "CVC Mismatch"
-                elif any(kw in msg_upper for kw in ['DO NOT HONOR']):
-                    return "Approved ✅", "Do Not Honor"
-                elif any(kw in msg_upper for kw in ['LOST', 'STOLEN']):
                     return "Approved ✅", msg[:40]
+                # Insufficient funds = Approved
+                elif 'INSUFFICIENT' in msg_upper:
+                    return "Approved ✅", "Insufficient Funds"
+                # Do not honor = Approved
+                elif 'DO NOT HONOR' in msg_upper:
+                    return "Approved ✅", "Do Not Honor"
+                # Lost/Stolen = Approved
+                elif 'LOST' in msg_upper or 'STOLEN' in msg_upper:
+                    return "Approved ✅", msg[:40]
+                # 3D Secure = Approved
                 elif any(kw in msg_upper for kw in ['3D', 'AUTHENTICATION', 'SECURE']):
                     return "Approved ✅", "3D Secure"
+                # Invalid card = Declined
+                elif 'INVALID' in msg_upper or 'INCORRECT' in msg_upper:
+                    return "Declined ❌", msg[:40]
                 else:
                     return "Declined ❌", msg[:40]
         except Exception as e:
@@ -165,6 +183,9 @@ class StripeGate:
             # Step 2: Tokenize
             tok_success, tok_result = self.tok(cc, mm, yy, cvv)
             if not tok_success:
+                # Return the error from tokenization (including expired)
+                if "Expired" in tok_result:
+                    return "Declined ❌", "Expired Card"
                 return "Declined ❌", tok_result
             
             # Step 3: Add payment method
@@ -334,7 +355,7 @@ async def stripe_auth_single(client, message):
         start_time = time()
         
         loading_msg = await message.reply(
-            f"<pre>✦ [$au] | Processing..!</pre>\n━━━━━━━━━━━━\n• <b>Card -</b> <code>{fullcc}</code>\n• <b>Gate -</b> <code>Stripe Auth</code>",
+            f"<pre>✦ [$au] | Processing..!</pre>\n━━━━━━━━━━━━\n[•] Card- <code>{fullcc}</code>\n[•] Gate - <code>Stripe Auth</code>",
             reply_to_message_id=message.id
         )
         
@@ -344,25 +365,24 @@ async def stripe_auth_single(client, message):
         end_time = time()
         timetaken = round(end_time - start_time, 2)
         
-        profile = f"<a href='tg://user?id={user_id}'>{message.from_user.first_name}</a>"
-        
         user_data = users.get(user_id, {})
         plan = user_data.get("plan", {}).get("plan", "Free")
         badge = user_data.get("plan", {}).get("badge", "🎟️")
         
         final_msg = f"""<b>[#StripeAuth] | Sos</b> ✦
 ━━━━━━━━━━━━━━━
-<b>💳 Card:</b> <code>{fullcc}</code>
-<b>📊 Status:</b> <code>{status}</code>
-<b>💬 Response:</b> <code>{response}</code>
-<b>⏱️ Time:</b> <code>{timetaken}s</code>
-<b>🌐 Gateway:</b> <code>Stripe Auth</code>
+<b>[•] Card-</b> <code>{fullcc}</code>
+<b>[•] Gateway -</b> <code>Stripe Auth</code>
+<b>[•] Status-</b> <code>{status}</code>
+<b>[•] Response-</b> <code>{response}</code>
 ━━━━━━━━━━━━━━━
-<b>[ﾒ] Checked By</b>: {profile} [<code>{plan} {badge}</code>]"""
+<b>[ﾒ] Checked By:</b> {message.from_user.first_name} [<code>{plan} {badge}</code>]
+<b>[ﾒ] T/t:</b> <code>[{timetaken} 𝐬]</code>"""
         
         buttons = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("Support", url="https://t.me/gitsus"),
+                InlineKeyboardButton("Plans", callback_data="plans_info")
             ]
         ])
         
@@ -466,7 +486,7 @@ async def stripe_auth_mass(client, message):
             except:
                 pass
         
-        checked_by = f"<a href='tg://user?id={user_id}'>{message.from_user.first_name}</a>"
+        checked_by = f"{message.from_user.first_name} [<code>{plan} {badge}</code>]"
         
         proxy = get_proxy(message.from_user.id)
         
@@ -489,9 +509,9 @@ async def stripe_auth_mass(client, message):
                 status, response = await loop.run_in_executor(None, check_stripe_auth, cc, mm, yy, cvv, proxy)
                 
                 final_results.append(
-                    f"• <b>Card:</b> <code>{card}</code>\n"
-                    f"• <b>Status:</b> <code>{status}</code>\n"
-                    f"• <b>Response:</b> <code>{response}</code>\n"
+                    f"[•] <b>Card:</b> <code>{card}</code>\n"
+                    f"[•] <b>Status:</b> <code>{status}</code>\n"
+                    f"[•] <b>Response:</b> <code>{response}</code>\n"
                     "━━━━━━━━━━━━"
                 )
                 
@@ -500,7 +520,7 @@ async def stripe_auth_mass(client, message):
                         f"<pre>✦ [$mau] | M-Stripe Auth</pre>\n"
                         + "\n".join(final_results[-8:]) + "\n"
                         f"<b>[⚬] Progress:</b> <code>{len(final_results)}/{card_count}</code>\n"
-                        f"<b>[⚬] Checked By:</b> {checked_by}",
+                        f"<b>[ﾒ] Checked By:</b> {checked_by}",
                         disable_web_page_preview=True
                     )
                 except:
@@ -514,9 +534,9 @@ async def stripe_auth_mass(client, message):
         
         final_text = f"<pre>✦ [$mau] | M-Stripe Auth</pre>\n"
         final_text += "\n".join(final_results) + "\n"
-        final_text += f"<b>[⚬] T/t:</b> <code>{timetaken}s</code>\n"
-        final_text += f"<b>[⚬] Total:</b> <code>{card_count} cards</code>\n"
-        final_text += f"<b>[⚬] Checked By:</b> {checked_by} [<code>{plan} {badge}</code>]"
+        final_text += f"<b>[ﾒ] T/t:</b> <code>[{timetaken} 𝐬]</code>\n"
+        final_text += f"<b>[ﾒ] Total:</b> <code>{card_count} cards</code>\n"
+        final_text += f"<b>[ﾒ] Checked By:</b> {checked_by}"
         
         if len(final_text) > 4000:
             import os
@@ -536,9 +556,9 @@ async def stripe_auth_mass(client, message):
             await message.reply_document(
                 filename,
                 caption=f"<pre>✦ [$mau] | M-Stripe Auth Results</pre>\n"
-                        f"<b>[⚬] Total:</b> <code>{card_count} cards</code>\n"
-                        f"<b>[⚬] T/t:</b> <code>{timetaken}s</code>\n"
-                        f"<b>[⚬] Checked By:</b> {checked_by} [<code>{plan} {badge}</code>]",
+                        f"<b>[ﾒ] Total:</b> <code>{card_count} cards</code>\n"
+                        f"<b>[ﾒ] T/t:</b> <code>[{timetaken} 𝐬]</code>\n"
+                        f"<b>[ﾒ] Checked By:</b> {checked_by}",
                 reply_to_message_id=message.id
             )
             await loader_msg.delete()

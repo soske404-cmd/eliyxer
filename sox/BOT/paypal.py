@@ -208,29 +208,60 @@ class PaypalGate:
             
             response_text = response.text
             
-            # Parse response - exact logic as original
-            if 'VALIDATION_ERROR' in response_text:
-                jsonresponse = response.json()
-                message = jsonresponse['errors'][0]['message']
-                return "Approved ✅", message[:40]
-            
-            elif 'errors' in response_text:
+            # Parse response - FIXED logic
+            if 'errors' in response_text:
                 jsonresponse = response.json()
                 try:
                     code = jsonresponse['errors'][0]['data'][0]['code']
-                except (KeyError, IndexError):
-                    code = 'NULL'
+                except (KeyError, IndexError, TypeError):
+                    code = None
                 
-                if "INVALID_SECURITY_CODE" in code:
-                    return "CCN ✅", "Invalid Security Code"
-                elif "OAS_VALIDATION_ERROR" in code:
-                    return "Approved ✅", code
-                elif "EXISTING_ACCOUNT_RESTRICTED" in code:
-                    return "Approved ✅", "Account Restricted"
-                elif "VALIDATION_ERROR" in code:
-                    return "Approved ✅", code
+                try:
+                    message = jsonresponse['errors'][0]['message']
+                except (KeyError, IndexError):
+                    message = 'Unknown'
+                
+                if code:
+                    # CVV/Security code errors = Approved (CCN)
+                    if "INVALID_SECURITY_CODE" in code or "CVV" in code.upper() or "CVC" in code.upper():
+                        return "Approved ✅", code
+                    # Expired card = Declined
+                    elif "EXPIRED" in code.upper():
+                        return "Declined ❌", code
+                    # Invalid/Incorrect number = Declined
+                    elif "INVALID_CARD" in code.upper() or "INCORRECT" in code.upper() or "INVALID_NUMBER" in code.upper():
+                        return "Declined ❌", code
+                    # Validation errors = Approved
+                    elif "VALIDATION_ERROR" in code or "OAS_VALIDATION_ERROR" in code:
+                        return "Approved ✅", code
+                    # Account restricted = Approved
+                    elif "EXISTING_ACCOUNT_RESTRICTED" in code:
+                        return "Approved ✅", code
+                    # Card declined = Declined
+                    elif "DECLINED" in code.upper() or "DENY" in code.upper():
+                        return "Declined ❌", code
+                    # Insufficient funds = Approved
+                    elif "INSUFFICIENT" in code.upper():
+                        return "Approved ✅", code
+                    # Do not honor = Approved
+                    elif "DO_NOT_HONOR" in code.upper():
+                        return "Approved ✅", code
+                    # Lost/Stolen = Approved
+                    elif "LOST" in code.upper() or "STOLEN" in code.upper():
+                        return "Approved ✅", code
+                    else:
+                        return "Declined ❌", code
                 else:
-                    return "Declined ❌", code[:40] if code != 'NULL' else 'Declined'
+                    # Check message for clues
+                    msg_upper = message.upper()
+                    if "CVV" in msg_upper or "CVC" in msg_upper or "SECURITY CODE" in msg_upper:
+                        return "Approved ✅", message[:40]
+                    elif "EXPIRED" in msg_upper:
+                        return "Declined ❌", message[:40]
+                    elif "INVALID" in msg_upper or "INCORRECT" in msg_upper:
+                        return "Declined ❌", message[:40]
+                    else:
+                        return "Declined ❌", message[:40]
             
             elif 'is3DSecureRequired' in response_text:
                 jsonresponse = response.json()
@@ -242,7 +273,7 @@ class PaypalGate:
                 if is_3ds_required == True:
                     return "Approved ✅", "3D Secure Required"
                 else:
-                    return "Charged 💎", "Charged $0.01"
+                    return "Charged $0.01 💎", "Charged $0.01"
             
             else:
                 return "Declined ❌", "Unknown Response"
@@ -415,7 +446,7 @@ async def paypal_single(client, message):
         start_time = time()
         
         loading_msg = await message.reply(
-            f"<pre>✦ [$pp] | Processing..!</pre>\n━━━━━━━━━━━━\n• <b>Card -</b> <code>{fullcc}</code>\n• <b>Gate -</b> <code>Paypal $0.01</code>",
+            f"<pre>✦ [$pp] | Processing..!</pre>\n━━━━━━━━━━━━\n[•] Card- <code>{fullcc}</code>\n[•] Gate - <code>Paypal $0.01</code>",
             reply_to_message_id=message.id
         )
         
@@ -425,25 +456,24 @@ async def paypal_single(client, message):
         end_time = time()
         timetaken = round(end_time - start_time, 2)
         
-        profile = f"<a href='tg://user?id={user_id}'>{message.from_user.first_name}</a>"
-        
         user_data = users.get(user_id, {})
         plan = user_data.get("plan", {}).get("plan", "Free")
         badge = user_data.get("plan", {}).get("badge", "🎟️")
         
         final_msg = f"""<b>[#Paypal] | Sos</b> ✦
 ━━━━━━━━━━━━━━━
-<b>💳 Card:</b> <code>{fullcc}</code>
-<b>📊 Status:</b> <code>{status}</code>
-<b>💬 Response:</b> <code>{response}</code>
-<b>⏱️ Time:</b> <code>{timetaken}s</code>
-<b>🌐 Gateway:</b> <code>Paypal $0.01 Charge</code>
+<b>[•] Card-</b> <code>{fullcc}</code>
+<b>[•] Gateway -</b> <code>Paypal $0.01</code>
+<b>[•] Status-</b> <code>{status}</code>
+<b>[•] Response-</b> <code>{response}</code>
 ━━━━━━━━━━━━━━━
-<b>[ﾒ] Checked By</b>: {profile} [<code>{plan} {badge}</code>]"""
+<b>[ﾒ] Checked By:</b> {message.from_user.first_name} [<code>{plan} {badge}</code>]
+<b>[ﾒ] T/t:</b> <code>[{timetaken} 𝐬]</code>"""
         
         buttons = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("Support", url="https://t.me/gitsus"),
+                InlineKeyboardButton("Plans", callback_data="plans_info")
             ]
         ])
         
@@ -547,7 +577,7 @@ async def paypal_mass(client, message):
             except:
                 pass
         
-        checked_by = f"<a href='tg://user?id={user_id}'>{message.from_user.first_name}</a>"
+        checked_by = f"{message.from_user.first_name} [<code>{plan} {badge}</code>]"
         
         proxy = get_proxy(message.from_user.id)
         
@@ -570,9 +600,9 @@ async def paypal_mass(client, message):
                 status, response = await loop.run_in_executor(None, check_paypal, cc, mm, yy, cvv, proxy)
                 
                 final_results.append(
-                    f"• <b>Card:</b> <code>{card}</code>\n"
-                    f"• <b>Status:</b> <code>{status}</code>\n"
-                    f"• <b>Response:</b> <code>{response}</code>\n"
+                    f"[•] <b>Card:</b> <code>{card}</code>\n"
+                    f"[•] <b>Status:</b> <code>{status}</code>\n"
+                    f"[•] <b>Response:</b> <code>{response}</code>\n"
                     "━━━━━━━━━━━━"
                 )
                 
@@ -581,7 +611,7 @@ async def paypal_mass(client, message):
                         f"<pre>✦ [$mpp] | M-Paypal</pre>\n"
                         + "\n".join(final_results[-8:]) + "\n"
                         f"<b>[⚬] Progress:</b> <code>{len(final_results)}/{card_count}</code>\n"
-                        f"<b>[⚬] Checked By:</b> {checked_by}",
+                        f"<b>[ﾒ] Checked By:</b> {checked_by}",
                         disable_web_page_preview=True
                     )
                 except:
@@ -595,9 +625,9 @@ async def paypal_mass(client, message):
         
         final_text = f"<pre>✦ [$mpp] | M-Paypal</pre>\n"
         final_text += "\n".join(final_results) + "\n"
-        final_text += f"<b>[⚬] T/t:</b> <code>{timetaken}s</code>\n"
-        final_text += f"<b>[⚬] Total:</b> <code>{card_count} cards</code>\n"
-        final_text += f"<b>[⚬] Checked By:</b> {checked_by} [<code>{plan} {badge}</code>]"
+        final_text += f"<b>[ﾒ] T/t:</b> <code>[{timetaken} 𝐬]</code>\n"
+        final_text += f"<b>[ﾒ] Total:</b> <code>{card_count} cards</code>\n"
+        final_text += f"<b>[ﾒ] Checked By:</b> {checked_by}"
         
         if len(final_text) > 4000:
             import os
@@ -617,9 +647,9 @@ async def paypal_mass(client, message):
             await message.reply_document(
                 filename,
                 caption=f"<pre>✦ [$mpp] | M-Paypal Results</pre>\n"
-                        f"<b>[⚬] Total:</b> <code>{card_count} cards</code>\n"
-                        f"<b>[⚬] T/t:</b> <code>{timetaken}s</code>\n"
-                        f"<b>[⚬] Checked By:</b> {checked_by} [<code>{plan} {badge}</code>]",
+                        f"<b>[ﾒ] Total:</b> <code>{card_count} cards</code>\n"
+                        f"<b>[ﾒ] T/t:</b> <code>[{timetaken} 𝐬]</code>\n"
+                        f"<b>[ﾒ] Checked By:</b> {checked_by}",
                 reply_to_message_id=message.id
             )
             await loader_msg.delete()

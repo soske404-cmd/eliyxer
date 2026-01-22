@@ -263,7 +263,7 @@ async def show_cmds(client, message):
     )
 
 
-@Client.on_callback_query(filters.regex("^(exit|close|home|gates|tools|auth|charge|shopify|auto|braintree|stripe)$"))
+@Client.on_callback_query(filters.regex("^(exit|close|home|gates|tools|auth|charge|shopify|auto|braintree|stripe|authnet_charge|paypal_charge)$"))
 async def handle_callbacks(client, callback_query):
     data = callback_query.data
 
@@ -321,19 +321,9 @@ async def handle_callbacks(client, callback_query):
 ⟐ <b>Mass Cmd</b>: <code>/mau cc|mm|yy|cvv</code>
 ⟐ <b>Status</b>: <code>Active ✅</code>
 ═══════════════════
-⟐ <b>Name</b>: <code>Authnet $1 Charge</code>
-⟐ <b>Command</b>: <code>/an cc|mm|yy|cvv</code>
-⟐ <b>Mass Cmd</b>: <code>/man cc|mm|yy|cvv</code>
-⟐ <b>Status</b>: <code>Active ✅</code>
-═══════════════════
 ⟐ <b>Name</b>: <code>Payflow Auth</code>
 ⟐ <b>Command</b>: <code>/pl cc|mm|yy|cvv</code>
 ⟐ <b>Mass Cmd</b>: <code>/mpl cc|mm|yy|cvv</code>
-⟐ <b>Status</b>: <code>Active ✅</code>
-═══════════════════
-⟐ <b>Name</b>: <code>Paypal $0.01 Charge</code>
-⟐ <b>Command</b>: <code>/pp cc|mm|yy|cvv</code>
-⟐ <b>Mass Cmd</b>: <code>/mpp cc|mm|yy|cvv</code>
 ⟐ <b>Status</b>: <code>Active ✅</code>
 ━ ━ ━ ━ ━━━ ━ ━ ━ ━
 ⟐ <b>Limit</b>: <code>As Per User's Plan</code>
@@ -352,11 +342,11 @@ async def handle_callbacks(client, callback_query):
     elif data == "charge":
         charge_buttons = InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("Shopify", callback_data="shopify"),
-                InlineKeyboardButton("[Auto Shopify]", callback_data="auto")
+                InlineKeyboardButton("Authnet $1", callback_data="authnet_charge"),
+                InlineKeyboardButton("Paypal $0.01", callback_data="paypal_charge")
             ],
             [
-                InlineKeyboardButton("Braintree", callback_data="braintree"),
+                InlineKeyboardButton("Shopify", callback_data="shopify"),
                 InlineKeyboardButton("Stripe", callback_data="stripe")
             ],
             [
@@ -455,6 +445,48 @@ async def handle_callbacks(client, callback_query):
         await callback_query.message.edit_text(
             working_text,
             reply_markup=working_buttons
+        )
+
+    elif data == "authnet_charge":
+        authnet_text = """<pre>#Authnet 〔Charge〕</pre>
+━ ━ ━ ━ ━━━ ━ ━ ━ ━
+⟐ <b>Name</b>: <code>Authnet $1 Charge</code>
+⟐ <b>Command</b>: <code>/an cc|mm|yy|cvv</code>
+⟐ <b>Mass Cmd</b>: <code>/man cc|mm|yy|cvv</code>
+⟐ <b>Status</b>: <code>Active ✅</code>
+━ ━ ━ ━ ━━━ ━ ━ ━ ━
+⟐ <b>Limit</b>: <code>As Per User's Plan</code>
+"""
+        authnet_buttons = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("Back", callback_data="charge"),
+                InlineKeyboardButton("Close", callback_data="exit")
+            ]
+        ])
+        await callback_query.message.edit_text(
+            authnet_text,
+            reply_markup=authnet_buttons
+        )
+
+    elif data == "paypal_charge":
+        paypal_text = """<pre>#Paypal 〔Charge〕</pre>
+━ ━ ━ ━ ━━━ ━ ━ ━ ━
+⟐ <b>Name</b>: <code>Paypal $0.01 Charge</code>
+⟐ <b>Command</b>: <code>/pp cc|mm|yy|cvv</code>
+⟐ <b>Mass Cmd</b>: <code>/mpp cc|mm|yy|cvv</code>
+⟐ <b>Status</b>: <code>Active ✅</code>
+━ ━ ━ ━ ━━━ ━ ━ ━ ━
+⟐ <b>Limit</b>: <code>As Per User's Plan</code>
+"""
+        paypal_buttons = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("Back", callback_data="charge"),
+                InlineKeyboardButton("Close", callback_data="exit")
+            ]
+        ])
+        await callback_query.message.edit_text(
+            paypal_text,
+            reply_markup=paypal_buttons
         )
 
     elif data == "tools":
