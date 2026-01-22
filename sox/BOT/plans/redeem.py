@@ -31,10 +31,10 @@ def save_redeems(data):
     with open(REDEEM_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-def generate_redeem_code(length=8):
-    """Generates a random redeem code consisting of uppercase letters and numbers."""
+def generate_redeem_code(length=12):
+    """Generates a random redeem code with Sos- prefix."""
     characters = string.ascii_uppercase + string.digits
-    code = ''.join(random.choice(characters) for _ in range(length))
+    code = 'Sos-' + ''.join(random.choice(characters) for _ in range(length))
     return code
 
 @Client.on_message(filters.command("red") & ~filters.edited)
