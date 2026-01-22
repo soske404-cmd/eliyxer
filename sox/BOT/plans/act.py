@@ -134,14 +134,14 @@ async def handle_vip(client, message: Message):
     else:
         await message.reply("❌ Failed to activate VIP plan. User not registered.")
 
-@Client.on_message(filters.command("ult") & filters.private)
+@Client.on_message(filters.command(["ult", "ultimate"]) & filters.private)
 async def handle_ult(client, message: Message):
     if not is_owner(message.from_user.id):
         return await message.reply("⛔ Only the owner can activate plans.")
 
     user_id = extract_user_id(message)
     if not user_id:
-        return await message.reply("❗Usage: `/ult [user_id|@username|reply]`", quote=True)
+        return await message.reply("❗Usage: `/ultimate [user_id|@username|reply]`", quote=True)
 
     result = activate_ult_plan(user_id)
     if result == "already_active":
